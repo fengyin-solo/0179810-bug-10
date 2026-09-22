@@ -508,6 +508,41 @@ body {
   height: 200px;
 }
 
+/* 记录未保存波形等数据缺失时的占位提示 */
+.chart-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px;
+  text-align: center;
+  background: #FAFAF7;
+  border: 1px dashed #C8C0B0;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+}
+
+.chart-placeholder .placeholder-icon {
+  font-size: 32px;
+}
+
+.chart-placeholder .placeholder-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.chart-placeholder .placeholder-hint {
+  font-size: 12px;
+  line-height: 1.6;
+  max-width: 420px;
+  margin: 0;
+}
+
 .heatmap-wrapper {
   height: 250px;
 }
@@ -1059,6 +1094,32 @@ body {
   font-weight: 600;
   color: #333;
   text-shadow: 0 0 2px rgba(255, 255, 255, 0.8);
+}
+
+/* 缺少强度数据（区别于真实的 0% 能量） */
+.intensity-bar.no-data {
+  background: repeating-linear-gradient(
+    45deg,
+    #ECECEC,
+    #ECECEC 6px,
+    #E0E0E0 6px,
+    #E0E0E0 12px
+  );
+}
+
+.intensity-bar.no-data .intensity-text {
+  color: #888;
+  text-shadow: none;
+}
+
+.intensity-missing-hint {
+  font-size: 12px;
+  color: #8a6d3b;
+  background: #FCF8E3;
+  border: 1px solid #FAEBCC;
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  margin: 0 0 12px;
 }
 
 .record-note {

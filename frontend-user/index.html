@@ -149,8 +149,13 @@
           <!-- 波形图 -->
           <section class="chart-section waveform-section">
             <h3>波形图</h3>
-            <div class="chart-wrapper">
+            <div class="chart-wrapper waveform-wrapper">
               <canvas id="waveformChart"></canvas>
+              <div class="chart-placeholder" id="waveformPlaceholder" style="display: none;">
+                <span class="placeholder-icon">〰️</span>
+                <p class="placeholder-title">该记录未保存波形数据</p>
+                <p class="placeholder-hint">记录中只包含频谱分析结果，无法还原原始波形起伏。重新上传该音频、选择相同区间分析后保存的记录将包含波形。</p>
+              </div>
             </div>
           </section>
 

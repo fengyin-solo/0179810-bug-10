@@ -18,6 +18,10 @@ class App {
     this.audioContext = null;
     this.currentAnalysisResult = null;
     this.currentFileName = '';
+    this.currentAudioData = null;
+    this.currentSampleRate = null;
+    this.currentStartMs = 0;
+    this.currentEndMs = 0;
     this.selectedRecordId = null;
   }
 
@@ -149,6 +153,8 @@ class App {
   removeAudioFile() {
     this.audioBuffer = null;
     this.currentAnalysisResult = null;
+    this.currentAudioData = null;
+    this.currentSampleRate = null;
     this.currentFileName = '';
     document.getElementById('audioInput').value = '';
     document.getElementById('fileInfo').style.display = 'none';
@@ -274,18 +280,25 @@ class App {
         harmonicsCount: analysisResult.harmonics.length 
       });
 
-      // 保存当前分析结果
+      // 保存当前分析结果及区间信息（保存记录时需要）
       this.currentAnalysisResult = analysisResult;
+      this.currentAudioData = selectedData;
+      this.currentSampleRate = this.audioBuffer.sampleRate;
+      this.currentStartMs = startMs;
+      this.currentEndMs = endMs;
+
+      // 先显示图表区域再更新图表，避免隐藏容器中绘制导致尺寸/重绘异常
+      document.getElementById('chartContainer').style.display = 'flex';
+      document.getElementById('emptyState').style.display = 'none';
 
       // 更新图表
-      this.chartManager.updateAllCharts(analysisResult, selectedData, this.audioBuffer.sampleRate);
+      this.chartManager.updateAllCharts(analysisResult, selectedData, this.audioBuffer.sampleRate, {
+        startMs,
+        endMs
+      });
 
       // 更新基频信息
       this.updateFundamentalInfo(analysisResult);
-
-      // 显示图表区域
-      document.getElementById('chartContainer').style.display = 'flex';
-      document.getElementById('emptyState').style.display = 'none';
 
       // 显示保存记录区域
       document.getElementById('saveRecordSection').style.display = 'block';
@@ -343,20 +356,25 @@ class App {
 
     const name = document.getElementById('recordName').value.trim();
     const note = document.getElementById('recordNote').value.trim();
-    const startMs = parseInt(document.getElementById('startTime').value) || 0;
-    const endMs = parseInt(document.getElementById('endTime').value) || 0;
 
     const harmonicIntensities = this.extractHarmonicIntensities(this.currentAnalysisResult);
+
+    // 保存降采样波形包络及采样率，应用记录时才能还原真实波形与时间刻度
+    const waveformSnapshot = this.currentAudioData
+      ? this.chartManager.buildWaveformEnvelope(this.currentAudioData)
+      : null;
 
     try {
       const record = this.recordManager.createRecord({
         fileName: this.currentFileName,
-        startMs,
-        endMs,
+        startMs: this.currentStartMs,
+        endMs: this.currentEndMs,
         fundamentalFreq: this.currentAnalysisResult.fundamentalFreq,
         harmonics: this.currentAnalysisResult.harmonics,
         harmonicIntensities,
         analysisResult: this.currentAnalysisResult,
+        sampleRate: this.currentSampleRate,
+        waveformSnapshot,
         name: name
       });
 
@@ -463,6 +481,32 @@ class App {
     const modalBody = document.getElementById('modalBody');
     document.getElementById('modalTitle').textContent = record.name;
 
+    const intensities = record.harmonicIntensities;
+    const hasIntensityData = !!(intensities && typeof intensities === 'object');
+
+    // 渲染单个相对强度条：缺数据时显示灰色"无数据"，避免与真实零能量混淆
+    const renderIntensityCell = (value) => {
+      if (value === null || value === undefined || Number.isNaN(value)) {
+        return `
+          <div class="intensity-bar no-data">
+            <div class="intensity-fill" style="width: 0%"></div>
+            <span class="intensity-text">无数据</span>
+          </div>
+        `;
+      }
+      return `
+        <div class="intensity-bar">
+          <div class="intensity-fill" style="width: ${value}%"></div>
+          <span class="intensity-text">${value.toFixed(1)}%</span>
+        </div>
+      `;
+    };
+
+    const fundamentalIntensity = hasIntensityData ? intensities.fundamental : null;
+    const durationMs = Number.isFinite(record.durationMs)
+      ? record.durationMs
+      : (record.endMs - record.startMs);
+
     modalBody.innerHTML = `
       <div class="record-detail">
         <div class="detail-section">
@@ -478,7 +522,7 @@ class App {
             </div>
             <div class="detail-item">
               <span class="detail-label">分析区间</span>
-              <span class="detail-value">${record.startMs}ms - ${record.endMs}ms (${(record.durationMs / 1000).toFixed(3)}s)</span>
+              <span class="detail-value">${record.startMs}ms - ${record.endMs}ms (${(durationMs / 1000).toFixed(3)}s)</span>
             </div>
             <div class="detail-item">
               <span class="detail-label">基频</span>
@@ -486,9 +530,10 @@ class App {
             </div>
           </div>
         </div>
-        
+
         <div class="detail-section">
           <h4>倍频与强度</h4>
+          ${!hasIntensityData ? '<p class="intensity-missing-hint">该记录保存时未包含倍频强度数据，以下强度均显示为"无数据"（不代表没有能量）。</p>' : ''}
           <div class="harmonics-table">
             <div class="table-header">
               <span>谐波</span>
@@ -498,32 +543,22 @@ class App {
             <div class="table-row">
               <span>基频</span>
               <span>${record.fundamentalFreq.toFixed(1)} Hz</span>
-              <span>
-                <div class="intensity-bar">
-                  <div class="intensity-fill" style="width: ${record.harmonicIntensities?.fundamental || 100}%"></div>
-                  <span class="intensity-text">${(record.harmonicIntensities?.fundamental || 100).toFixed(1)}%</span>
-                </div>
-              </span>
+              <span>${renderIntensityCell(fundamentalIntensity)}</span>
             </div>
             ${record.harmonics.map((h, i) => {
               const intensityKey = `harmonic${i + 2}`;
-              const intensity = record.harmonicIntensities?.[intensityKey] || 0;
+              const intensity = hasIntensityData ? intensities[intensityKey] : null;
               return `
                 <div class="table-row">
                   <span>${i + 2}倍频</span>
                   <span>${h.toFixed(1)} Hz</span>
-                  <span>
-                    <div class="intensity-bar">
-                      <div class="intensity-fill" style="width: ${intensity}%"></div>
-                      <span class="intensity-text">${intensity.toFixed(1)}%</span>
-                    </div>
-                  </span>
+                  <span>${renderIntensityCell(intensity)}</span>
                 </div>
               `;
             }).join('')}
           </div>
         </div>
-        
+
         ${record.note ? `
           <div class="detail-section">
             <h4>备注</h4>
@@ -553,17 +588,79 @@ class App {
     }
 
     this.currentAnalysisResult = record.analysisResult;
+    this.currentAudioData = null;
+    this.currentSampleRate = record.sampleRate ?? null;
+    this.currentStartMs = record.startMs;
+    this.currentEndMs = record.endMs;
 
-    const fakeAudioData = new Float32Array(1000).fill(0);
-    const sampleRate = 44100;
-    this.chartManager.updateAllCharts(record.analysisResult, fakeAudioData, sampleRate);
-    this.updateFundamentalInfo(record.analysisResult);
+    const { startMs, endMs } = record;
 
+    // 先显示图表区域，再绘制图表（隐藏容器中拿不到尺寸，且会导致窗口缩放不重绘）
     document.getElementById('chartContainer').style.display = 'flex';
     document.getElementById('emptyState').style.display = 'none';
 
+    // 同步左侧区间控件与记录的分析区间
+    this.syncRangeInputs(startMs, endMs);
+
+    const hasWaveform = !!(record.waveformSnapshot &&
+      Array.isArray(record.waveformSnapshot.upper) &&
+      record.waveformSnapshot.upper.length > 0 &&
+      record.sampleRate);
+
+    if (hasWaveform) {
+      // 用保存时的真实采样率与波形包络还原，时间刻度按记录的 startMs/endMs 对齐
+      this.chartManager.updateAllCharts(
+        record.analysisResult,
+        null,
+        record.sampleRate,
+        { startMs, endMs, waveformSnapshot: record.waveformSnapshot }
+      );
+    } else {
+      // 老版本记录未保存波形：明确占位说明，其余频谱/热力图正常显示，绝不画假平线
+      this.chartManager.updateAllCharts(
+        record.analysisResult,
+        null,
+        record.sampleRate ?? 0,
+        { startMs, endMs, waveformSnapshot: null }
+      );
+    }
+
+    this.updateFundamentalInfo(record.analysisResult);
+
+    // 容器显示后再触发一次重绘，确保手动绘制的热力图取到真实宽度
+    requestAnimationFrame(() => this.chartManager.handleResize());
+
     this.closeRecordModal();
-    this.uiController.showToast('记录已应用', 'success');
+
+    if (!hasWaveform) {
+      this.uiController.showToast('记录已应用；该记录未保存波形数据，波形区域仅显示提示', 'warning');
+    } else {
+      this.uiController.showToast('记录已应用', 'success');
+    }
+  }
+
+  /**
+   * 将记录的分析区间同步到左侧区间输入框和滑块
+   * @param {number} startMs
+   * @param {number} endMs
+   */
+  syncRangeInputs(startMs, endMs) {
+    const startTimeEl = document.getElementById('startTime');
+    const endTimeEl = document.getElementById('endTime');
+    const maxAttr = parseInt(endTimeEl.max, 10);
+    const hasAudio = !!this.audioBuffer;
+
+    // 没有加载音频时，把控件上限扩展到记录的区间结束时间
+    const effectiveMax = hasAudio && Number.isFinite(maxAttr)
+      ? Math.max(maxAttr, endMs)
+      : Math.max(1000, endMs);
+
+    startTimeEl.max = effectiveMax;
+    endTimeEl.max = effectiveMax;
+    startTimeEl.value = startMs;
+    endTimeEl.value = endMs;
+
+    this.updateRangeSlider();
   }
 
   deleteRecord() {

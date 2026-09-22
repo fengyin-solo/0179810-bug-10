@@ -53,21 +53,28 @@ export class RecordManager {
    * @param {Array} recordData.harmonics - 倍频数组
    * @param {Object} recordData.harmonicIntensities - 倍频强度
    * @param {Object} recordData.analysisResult - 完整分析结果
+   * @param {number} recordData.sampleRate - 采样率
+   * @param {{upper: number[], lower: number[]}|null} recordData.waveformSnapshot - 降采样波形包络（可能为空，表示未保存波形）
    * @param {string} recordData.name - 记录名称（可选）
    * @returns {Object} 创建的记录
    */
   createRecord(recordData) {
+    const startMs = recordData.startMs ?? 0;
+    const endMs = recordData.endMs ?? startMs;
     const record = {
       id: this.generateId(),
       name: recordData.name || `${recordData.fileName} - ${this.formatTimestamp()}`,
       fileName: recordData.fileName,
-      startMs: recordData.startMs,
-      endMs: recordData.endMs,
-      durationMs: recordData.endMs - recordData.startMs,
+      startMs,
+      endMs,
+      durationMs: endMs - startMs,
       fundamentalFreq: recordData.fundamentalFreq,
       harmonics: recordData.harmonics,
-      harmonicIntensities: recordData.harmonicIntensities,
+      harmonicIntensities: recordData.harmonicIntensities ?? null,
       analysisResult: recordData.analysisResult,
+      // 保存当时的采样率和波形包络，回放时才能还原真实时间刻度与波形起伏
+      sampleRate: recordData.sampleRate ?? null,
+      waveformSnapshot: recordData.waveformSnapshot ?? null,
       createdAt: Date.now(),
       note: ''
     };
