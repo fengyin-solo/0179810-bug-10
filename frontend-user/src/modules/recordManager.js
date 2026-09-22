@@ -53,6 +53,9 @@ export class RecordManager {
    * @param {Array} recordData.harmonics - 倍频数组
    * @param {Object} recordData.harmonicIntensities - 倍频强度
    * @param {Object} recordData.analysisResult - 完整分析结果
+   * @param {Object} [recordData.waveformSnapshot] - 降采样波形快照（可选，未存波形时为 null）
+   * @param {number} [recordData.sampleRate] - 采样率
+   * @param {number} [recordData.fftSize] - 分析时使用的 FFT 大小
    * @param {string} recordData.name - 记录名称（可选）
    * @returns {Object} 创建的记录
    */
@@ -68,6 +71,11 @@ export class RecordManager {
       harmonics: recordData.harmonics,
       harmonicIntensities: recordData.harmonicIntensities,
       analysisResult: recordData.analysisResult,
+      // 波形数据（降采样 min/max 包络快照）；没有波形来源时显式置 null，
+      // 应用记录时据此提示"未保存波形"，而不是画一条全零假线
+      waveformSnapshot: recordData.waveformSnapshot || null,
+      sampleRate: recordData.sampleRate || null,
+      fftSize: recordData.fftSize || null,
       createdAt: Date.now(),
       note: ''
     };

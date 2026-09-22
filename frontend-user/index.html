@@ -151,6 +151,11 @@
             <h3>波形图</h3>
             <div class="chart-wrapper">
               <canvas id="waveformChart"></canvas>
+              <div class="chart-no-data" id="waveformNoData" style="display: none;">
+                <span class="no-data-icon">〰️</span>
+                <p class="no-data-title">本记录未保存波形数据</p>
+                <p class="no-data-hint">保存该记录时没有存储原始音频采样，因此无法还原声音起伏。重新上传原音频并按记录区间再次分析即可看到波形。</p>
+              </div>
             </div>
           </section>
 

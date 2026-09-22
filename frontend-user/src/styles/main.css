@@ -508,6 +508,45 @@ body {
   height: 200px;
 }
 
+/* 图表无数据说明（覆盖在 canvas 上，区别于真实的零能量平线） */
+.chart-no-data {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
+  padding: 20px;
+  background: repeating-linear-gradient(
+    45deg,
+    #FAF6F0,
+    #FAF6F0 12px,
+    #F3ECE0 12px,
+    #F3ECE0 24px
+  );
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.chart-no-data .no-data-icon {
+  font-size: 32px;
+}
+
+.chart-no-data .no-data-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--primary-color);
+}
+
+.chart-no-data .no-data-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+  max-width: 460px;
+  line-height: 1.6;
+}
+
 .heatmap-wrapper {
   height: 250px;
 }
@@ -1059,6 +1098,44 @@ body {
   font-weight: 600;
   color: #333;
   text-shadow: 0 0 2px rgba(255, 255, 255, 0.8);
+}
+
+/* 强度数据缺失：斜纹灰底 + "无数据"，与真实的 0% 条柱区分 */
+.intensity-bar.no-data {
+  background: repeating-linear-gradient(
+    45deg,
+    #EEEEEE,
+    #EEEEEE 6px,
+    #DCDCDC 6px,
+    #DCDCDC 12px
+  );
+}
+
+.intensity-text.no-data-text {
+  color: #8A8A8A;
+  text-shadow: none;
+}
+
+/* 记录详情中的缺数据整体提示 */
+.detail-missing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  background: #FFF4E5;
+  border: 1px solid var(--warning-color);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.detail-missing .missing-icon {
+  font-size: 16px;
+}
+
+.detail-missing-text {
+  color: var(--warning-color) !important;
+  font-weight: 600;
 }
 
 .record-note {

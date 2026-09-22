@@ -17,6 +17,9 @@ class App {
     this.audioBuffer = null;
     this.audioContext = null;
     this.currentAnalysisResult = null;
+    this.currentAudioData = null;
+    this.currentSampleRate = null;
+    this.currentStartMs = 0;
     this.currentFileName = '';
     this.selectedRecordId = null;
   }
@@ -149,6 +152,9 @@ class App {
   removeAudioFile() {
     this.audioBuffer = null;
     this.currentAnalysisResult = null;
+    this.currentAudioData = null;
+    this.currentSampleRate = null;
+    this.currentStartMs = 0;
     this.currentFileName = '';
     document.getElementById('audioInput').value = '';
     document.getElementById('fileInfo').style.display = 'none';
@@ -269,23 +275,26 @@ class App {
       // 分析音频
       const analysisResult = await this.audioAnalyzer.analyze(selectedData, this.audioBuffer.sampleRate, fftSize);
 
-      logger.info('音频分析完成', { 
+      logger.info('音频分析完成', {
         fundamentalFreq: analysisResult.fundamentalFreq,
-        harmonicsCount: analysisResult.harmonics.length 
+        harmonicsCount: analysisResult.harmonics.length
       });
 
-      // 保存当前分析结果
+      // 保存当前分析结果及波形来源数据（保存记录时用于持久化波形快照）
       this.currentAnalysisResult = analysisResult;
+      this.currentAudioData = selectedData;
+      this.currentSampleRate = this.audioBuffer.sampleRate;
+      this.currentStartMs = startMs;
 
-      // 更新图表
-      this.chartManager.updateAllCharts(analysisResult, selectedData, this.audioBuffer.sampleRate);
+      // 先显示图表容器，再创建图表，避免容器隐藏时 canvas 尺寸取为 0
+      document.getElementById('chartContainer').style.display = 'flex';
+      document.getElementById('emptyState').style.display = 'none';
+
+      // 更新图表（传入区间起始时间，波形/热力图时间轴相对整段音频标注）
+      this.chartManager.updateAllCharts(analysisResult, selectedData, this.audioBuffer.sampleRate, startMs);
 
       // 更新基频信息
       this.updateFundamentalInfo(analysisResult);
-
-      // 显示图表区域
-      document.getElementById('chartContainer').style.display = 'flex';
-      document.getElementById('emptyState').style.display = 'none';
 
       // 显示保存记录区域
       document.getElementById('saveRecordSection').style.display = 'block';
@@ -345,8 +354,18 @@ class App {
     const note = document.getElementById('recordNote').value.trim();
     const startMs = parseInt(document.getElementById('startTime').value) || 0;
     const endMs = parseInt(document.getElementById('endTime').value) || 0;
+    const fftSize = parseInt(document.getElementById('fftSize').value) || null;
 
     const harmonicIntensities = this.extractHarmonicIntensities(this.currentAnalysisResult);
+
+    // 持久化降采样波形快照；没有原始采样时为 null，应用时会明确提示"未保存波形"
+    const waveformSnapshot = this.currentAudioData && this.currentSampleRate
+      ? this.chartManager.buildWaveformSnapshot(
+          this.currentAudioData,
+          this.currentSampleRate,
+          this.currentStartMs || startMs
+        )
+      : null;
 
     try {
       const record = this.recordManager.createRecord({
@@ -357,6 +376,9 @@ class App {
         harmonics: this.currentAnalysisResult.harmonics,
         harmonicIntensities,
         analysisResult: this.currentAnalysisResult,
+        waveformSnapshot,
+        sampleRate: this.currentSampleRate,
+        fftSize,
         name: name
       });
 
@@ -441,6 +463,42 @@ class App {
     return text.substring(0, maxLength - 3) + '...';
   }
 
+  /**
+   * 读取记录中某个谐波的相对强度
+   * @returns {number|null} 数值（0 表示确实无能量）；数据缺失时返回 null
+   */
+  getRecordIntensity(record, key) {
+    const values = record.harmonicIntensities;
+    if (!values || typeof values !== 'object') return null;
+    const value = values[key];
+    return typeof value === 'number' && Number.isFinite(value) ? value : null;
+  }
+
+  /**
+   * 渲染强度条：缺失数据明确显示"无数据"，数值为 0 时显示真实的 0.0%
+   */
+  renderIntensityBar(value) {
+    if (value === null) {
+      return `
+        <span>
+          <div class="intensity-bar no-data">
+            <span class="intensity-text no-data-text">无数据</span>
+          </div>
+        </span>
+      `;
+    }
+
+    const width = Math.max(0, Math.min(100, value));
+    return `
+      <span>
+        <div class="intensity-bar">
+          <div class="intensity-fill" style="width: ${width}%"></div>
+          <span class="intensity-text">${value.toFixed(1)}%</span>
+        </div>
+      </span>
+    `;
+  }
+
   toggleRecordsPanel() {
     const content = document.getElementById('recordsContent');
     const btn = document.getElementById('toggleRecordsBtn');
@@ -478,7 +536,21 @@ class App {
             </div>
             <div class="detail-item">
               <span class="detail-label">分析区间</span>
-              <span class="detail-value">${record.startMs}ms - ${record.endMs}ms (${(record.durationMs / 1000).toFixed(3)}s)</span>
+              <span class="detail-value">${record.startMs}ms - ${record.endMs}ms (${((record.endMs - record.startMs) / 1000).toFixed(3)}s)</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">采样率</span>
+              <span class="detail-value">${record.sampleRate ? `${record.sampleRate} Hz` : '未知'}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">FFT 精度</span>
+              <span class="detail-value">${record.fftSize || '未知'}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">波形数据</span>
+              <span class="detail-value ${this.chartManager.isWaveformSnapshot(record.waveformSnapshot) ? '' : 'detail-missing-text'}">
+                ${this.chartManager.isWaveformSnapshot(record.waveformSnapshot) ? '已保存（可还原起伏）' : '未保存（应用后不显示波形）'}
+              </span>
             </div>
             <div class="detail-item">
               <span class="detail-label">基频</span>
@@ -489,6 +561,7 @@ class App {
         
         <div class="detail-section">
           <h4>倍频与强度</h4>
+          ${record.harmonicIntensities ? `
           <div class="harmonics-table">
             <div class="table-header">
               <span>谐波</span>
@@ -498,30 +571,25 @@ class App {
             <div class="table-row">
               <span>基频</span>
               <span>${record.fundamentalFreq.toFixed(1)} Hz</span>
-              <span>
-                <div class="intensity-bar">
-                  <div class="intensity-fill" style="width: ${record.harmonicIntensities?.fundamental || 100}%"></div>
-                  <span class="intensity-text">${(record.harmonicIntensities?.fundamental || 100).toFixed(1)}%</span>
-                </div>
-              </span>
+              ${this.renderIntensityBar(this.getRecordIntensity(record, 'fundamental'))}
             </div>
             ${record.harmonics.map((h, i) => {
               const intensityKey = `harmonic${i + 2}`;
-              const intensity = record.harmonicIntensities?.[intensityKey] || 0;
               return `
                 <div class="table-row">
                   <span>${i + 2}倍频</span>
                   <span>${h.toFixed(1)} Hz</span>
-                  <span>
-                    <div class="intensity-bar">
-                      <div class="intensity-fill" style="width: ${intensity}%"></div>
-                      <span class="intensity-text">${intensity.toFixed(1)}%</span>
-                    </div>
-                  </span>
+                  ${this.renderIntensityBar(this.getRecordIntensity(record, intensityKey))}
                 </div>
               `;
             }).join('')}
           </div>
+          ` : `
+          <div class="detail-missing">
+            <span class="missing-icon">⚠️</span>
+            <span>该记录保存时缺少倍频强度数据，无法显示强度条。下方条柱均不代表真实能量。</span>
+          </div>
+          `}
         </div>
         
         ${record.note ? `
@@ -552,18 +620,56 @@ class App {
       return;
     }
 
+    // 同步左侧区间选择与分析参数，使界面刻度与记录中的分析区间一致
+    this.syncControlsToRecord(record);
+
     this.currentAnalysisResult = record.analysisResult;
 
-    const fakeAudioData = new Float32Array(1000).fill(0);
-    const sampleRate = 44100;
-    this.chartManager.updateAllCharts(record.analysisResult, fakeAudioData, sampleRate);
-    this.updateFundamentalInfo(record.analysisResult);
+    // 应用记录时没有可分析的原始音频：标记波形来源为空，
+    // 若记录中也没有持久化波形快照，图表会显示明确的缺数据说明
+    this.currentAudioData = null;
+    this.currentSampleRate = record.sampleRate || null;
+    this.currentStartMs = record.startMs || 0;
+    this.currentFileName = record.fileName;
 
+    // 先显示容器再创建图表，保证 canvas 能取到正确宽度
     document.getElementById('chartContainer').style.display = 'flex';
     document.getElementById('emptyState').style.display = 'none';
 
+    // 从记录恢复图表：有波形快照则还原真实起伏，否则明确提示"未保存波形数据"
+    this.chartManager.updateChartsFromRecord(record);
+    this.updateFundamentalInfo(record.analysisResult);
+
     this.closeRecordModal();
-    this.uiController.showToast('记录已应用', 'success');
+
+    if (this.chartManager.isWaveformSnapshot(record.waveformSnapshot)) {
+      this.uiController.showToast('记录已应用', 'success');
+    } else {
+      this.uiController.showToast('记录已应用；该记录未保存波形数据，波形图无法还原', 'warning');
+    }
+  }
+
+  /**
+   * 将记录的分析区间和 FFT 参数同步到左侧控件（刻度与记录保持一致）
+   */
+  syncControlsToRecord(record) {
+    const startInput = document.getElementById('startTime');
+    const endInput = document.getElementById('endTime');
+
+    // 未上传音频时输入框 max 受默认值限制，这里按记录区间放开
+    if (!this.audioBuffer) {
+      startInput.max = record.endMs;
+      endInput.max = record.endMs;
+    }
+
+    startInput.value = record.startMs;
+    endInput.value = record.endMs;
+
+    if (record.fftSize) {
+      document.getElementById('fftSize').value = record.fftSize;
+    }
+
+    this.updateRangeSlider();
   }
 
   deleteRecord() {
